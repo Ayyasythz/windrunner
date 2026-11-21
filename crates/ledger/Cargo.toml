@@ -1,0 +1,13 @@
+[package]
+name = "windrunner-ledger"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+windrunner-types.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+windrunner-engine.workspace = true
+proptest.workspace = true

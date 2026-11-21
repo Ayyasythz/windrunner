@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/types", "crates/engine", "crates/ledger", "crates/journal", "crates/exchange", "crates/server", "crates/history"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+windrunner-types = { path = "crates/types" }
+windrunner-engine = { path = "crates/engine" }
+windrunner-ledger = { path = "crates/ledger" }
+windrunner-journal = { path = "crates/journal" }
+windrunner-exchange = { path = "crates/exchange" }
+windrunner-history = { path = "crates/history" }
+serde = { version = "1", features = ["derive"] }
+slab = "0.4"
+proptest = "1"
+postcard = { version = "1", features = ["use-std"] }
+crc32fast = "1"
+tempfile = "3"

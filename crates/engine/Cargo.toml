@@ -1,0 +1,18 @@
+[package]
+name = "windrunner-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+windrunner-types.workspace = true
+serde.workspace = true
+slab.workspace = true
+
+[dev-dependencies]
+criterion = "0.8.2"
+proptest.workspace = true
+
+[[bench]]
+name = "matching"
+harness = false
