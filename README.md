@@ -1,65 +1,65 @@
 # windrunner
 
-Matching engine untuk prediction market biner (YES/NO), ditulis dengan Rust.
+A matching engine for binary (YES/NO) prediction markets, written in Rust.
 
-## Struktur
+## Layout
 
-| Crate | Isi |
-|-------|-----|
-| `crates/types` | Tipe dasar: `Price`, `Qty`, order, command, event |
-| `crates/engine` | Order book dan matching, tanpa IO |
-| `crates/ledger` | Saldo, reservasi, settlement mint/merge/transfer, payout |
-| `crates/journal` | WAL dan snapshot di disk |
-| `crates/exchange` | `Exchange` (engine + ledger) dan `Sequencer` (log lalu apply) |
-| `crates/history` | Proyeksi ke Postgres: history order, trade, dan candle |
-| `crates/server` | HTTP + WebSocket (axum) |
+| Crate | Contents |
+|-------|----------|
+| `crates/types` | Core types: `Price`, `Qty`, orders, commands, events |
+| `crates/engine` | Order book and matching, no IO |
+| `crates/ledger` | Balances, reservations, mint/merge/transfer settlement, payouts |
+| `crates/journal` | On-disk write-ahead log and snapshots |
+| `crates/exchange` | `Exchange` (engine + ledger) and `Sequencer` (log, then apply) |
+| `crates/history` | Postgres projection: order, trade and candle history |
+| `crates/server` | HTTP + WebSocket server (axum) |
 
-## Menjalankan
+## Running
 
 ```sh
-WINDRUNNER_ADMIN_KEY=rahasia \
-WINDRUNNER_API_KEYS=kunci-alice:1,kunci-bob:2 \
+WINDRUNNER_ADMIN_KEY=secret \
+WINDRUNNER_API_KEYS=alice-key:1,bob-key:2 \
 cargo run -p windrunner-server
 ```
 
-| Variabel | Default | Arti |
-|----------|---------|------|
-| `WINDRUNNER_ADDR` | `127.0.0.1:8080` | Alamat listen |
-| `WINDRUNNER_DATA_DIR` | `data` | Folder WAL dan snapshot |
-| `WINDRUNNER_ADMIN_KEY` | wajib | Kunci untuk endpoint `/admin` |
-| `WINDRUNNER_API_KEYS` | kosong | Daftar `kunci:account_id`, dipisah koma |
-| `WINDRUNNER_CORS_ORIGINS` | tidak ada | Origin browser yang diizinkan, dipisah koma, atau `*`. Tanpa ini tidak ada header CORS |
-| `WINDRUNNER_DATABASE_URL` | tidak ada | URL Postgres untuk history, misalnya `postgres://user@localhost/windrunner`. Tanpa ini endpoint history menjawab 503 `history_disabled` |
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `WINDRUNNER_ADDR` | `127.0.0.1:8080` | Listen address |
+| `WINDRUNNER_DATA_DIR` | `data` | Directory for the WAL and snapshots |
+| `WINDRUNNER_ADMIN_KEY` | required | Key for the `/admin` endpoints |
+| `WINDRUNNER_API_KEYS` | empty | Comma-separated `key:account_id` pairs |
+| `WINDRUNNER_CORS_ORIGINS` | unset | Allowed browser origins, comma-separated, or `*`. Without it no CORS headers are sent |
+| `WINDRUNNER_DATABASE_URL` | unset | Postgres URL for history, e.g. `postgres://user@localhost/windrunner`. Without it the history endpoints answer 503 `history_disabled` |
 
-## Satuan
+## Units
 
-Semua angka di API adalah integer.
+Every number in the API is an integer.
 
-- **Harga**: basis poin dari 1 USDC. `6000` berarti 0.60. Harga order adalah harga outcome-nya sendiri, jadi Buy NO @ 4000 berarti membayar 0.40 per share NO.
-- **Qty**: micro-share. `1000000` berarti 1 share.
-- **USDC**: micro-USDC. `1000000` berarti 1 USDC.
-- **Waktu** (`expires_at`): milidetik sejak Unix epoch.
-- **Order book** selalu dalam harga YES: `bids` dan `asks` berisi pasangan `[harga, qty]`, terbaik dulu.
+- **Price**: basis points of 1 USDC. `6000` means 0.60. An order's price is the price of its own outcome, so Buy NO @ 4000 pays 0.40 per NO share.
+- **Qty**: micro-shares. `1000000` is 1 share.
+- **USDC**: micro-USDC. `1000000` is 1 USDC.
+- **Time** (`expires_at`): milliseconds since the Unix epoch.
+- **Order book** is always quoted in YES prices: `bids` and `asks` hold `[price, qty]` pairs, best first.
 
 ## REST
 
-Autentikasi memakai header `Authorization: Bearer <kunci>`. Error selalu berbentuk `{"error": "<kode>"}`.
+Authenticate with an `Authorization: Bearer <key>` header. Errors always look like `{"error": "<code>"}`.
 
-| Method | Path | Auth | Hasil |
-|--------|------|------|-------|
+| Method | Path | Auth | Result |
+|--------|------|------|--------|
 | GET | `/health` | - | `ok` |
-| GET | `/metrics` | - | Metrics format Prometheus |
-| GET | `/markets` | - | Daftar market dengan status, `info`, tick, lot, best bid/ask |
+| GET | `/metrics` | - | Prometheus metrics |
+| GET | `/markets` | - | Markets with status, `info`, tick, lot, best bid/ask |
 | GET | `/markets/{market}/book?depth=N` | - | `{market, seq, bids, asks}` |
 | POST | `/orders` | user | 201 `{order_id, seq, events}` |
 | DELETE | `/markets/{market}/orders/{order_id}` | user | 200 `{seq, events}` |
 | GET | `/account` | user | `{account, usdc, positions, open_orders}` |
 | POST | `/withdrawals` | user | 200 `{seq}` |
-| GET | `/orders?status=&before=&limit=` | user | `{orders}`: history order akun, terbaru dulu |
-| GET | `/fills?before=&limit=` | user | `{fills}`: trade milik akun, dengan `role` maker/taker |
-| GET | `/markets/{market}/trades?before=&limit=` | - | `{trades}`: trade publik tanpa identitas akun |
-| GET | `/markets/{market}/candles?interval=&limit=` | - | `{candles}`: OHLC harga YES, terbaru dulu |
-| POST | `/admin/markets` | admin | 201 `{market, tick, lot}`; body boleh memuat `info` |
+| GET | `/orders?status=&before=&limit=` | user | `{orders}`: the account's order history, newest first |
+| GET | `/fills?before=&limit=` | user | `{fills}`: the account's trades, with a maker/taker `role` |
+| GET | `/markets/{market}/trades?before=&limit=` | - | `{trades}`: public trades without account identities |
+| GET | `/markets/{market}/candles?interval=&limit=` | - | `{candles}`: OHLC of the YES price, newest first |
+| POST | `/admin/markets` | admin | 201 `{market, tick, lot}`; the body may include `info` |
 | PUT | `/admin/markets/{market}/info` | admin | 200 `{seq, events}`, body `{title, description, closes_at}` |
 | POST | `/admin/deposits` | admin | 200 `{seq}` |
 | POST | `/admin/markets/{market}/pause` | admin | 200 `{seq, events}` |
@@ -67,74 +67,74 @@ Autentikasi memakai header `Authorization: Bearer <kunci>`. Error selalu berbent
 | POST | `/admin/markets/{market}/close` | admin | 200 `{seq, events}` |
 | POST | `/admin/markets/{market}/resolve` | admin | 200 `{seq, events}`, body `{"winner": "yes"}` |
 
-Body `POST /orders`:
+`POST /orders` body:
 
 ```json
 {"market": 1, "side": "buy", "outcome": "yes", "price": 6000, "qty": 10000000,
  "tif": "gtc", "post_only": false}
 ```
 
-`tif` boleh `"gtc"` (default), `"fok"`, `"fak"`, atau `{"gtd": {"expires_at": 1767225600000}}`. Market order dikirim sebagai `fak` dengan harga batas.
+`tif` is `"gtc"` (default), `"fok"`, `"fak"`, or `{"gtd": {"expires_at": 1767225600000}}`. Send a market order as `fak` with a limit price.
 
-Kode status:
+Status codes:
 
-- **401** `unauthorized`: kunci salah atau tidak ada.
+- **400** `invalid_interval`, `invalid_status`.
+- **401** `unauthorized`: missing or unknown key.
 - **404** `unknown_market`, `unknown_order`, `not_owner`.
 - **409** `market_exists`, `invalid_transition`.
-- **422** order ditolak: `invalid_price`, `invalid_qty`, `invalid_time_in_force`, `already_expired`, `post_only_would_cross`, `fok_not_fillable`, `insufficient_funds`, `insufficient_shares`, `unknown_market`, `market_not_open`. Juga `invalid_market_config`, `invalid_market_info`, dan `deposit_limit`.
-- **400** `invalid_interval`, `invalid_status`.
-- **503** `busy` (antrean penuh), `unavailable` (exchange berhenti), `history_disabled`, atau `history_unavailable`.
+- **422** rejected orders: `invalid_price`, `invalid_qty`, `invalid_time_in_force`, `already_expired`, `post_only_would_cross`, `fok_not_fillable`, `insufficient_funds`, `insufficient_shares`, `unknown_market`, `market_not_open`. Also `invalid_market_config`, `invalid_market_info` and `deposit_limit`.
+- **503** `busy` (queue full), `unavailable` (exchange stopped), `history_disabled` or `history_unavailable`.
 
-Respons baru dikirim setelah input tersimpan di disk (fsync).
+A response is sent only after its input is on disk (fsync).
 
-`info` market berisi `title` (wajib, maksimum 200 karakter), `description`, dan `closes_at` (milidetik epoch). Isinya hanya untuk tampilan dan tidak memengaruhi trading; market tanpa `info` menampilkan `null`.
+A market's `info` holds `title` (required, at most 200 characters), `description` and `closes_at` (epoch milliseconds). It is display-only and does not affect trading; markets without it return `null`.
 
-### Status market
+### Market status
 
-| Status | Order baru | Cancel | Bisa pindah ke |
-|--------|-----------|--------|----------------|
-| `"open"` | ya | ya | paused, closed, resolved |
-| `"paused"` | ditolak | ya | open, closed, resolved |
-| `"closed"` | ditolak | buku kosong | resolved |
-| `{"resolved": {"winner": "yes"}}` | ditolak | buku kosong | - |
+| Status | New orders | Cancels | Can move to |
+|--------|-----------|---------|-------------|
+| `"open"` | accepted | allowed | paused, closed, resolved |
+| `"paused"` | rejected | allowed | open, closed, resolved |
+| `"closed"` | rejected | book is empty | resolved |
+| `{"resolved": {"winner": "yes"}}` | rejected | book is empty | - |
 
-`close` dan `resolve` membatalkan semua order terbuka (alasan `market_closed`). `resolve` lalu membayar 1 USDC per share yang menang dan menghapus posisi market itu.
+`close` and `resolve` cancel every open order (reason `market_closed`). `resolve` then pays 1 USDC per winning share and clears the market's positions.
 
 ### History
 
-Empat endpoint history membaca dari Postgres, yang diisi oleh proses latar belakang. Datanya bisa tertinggal sesaat dari exchange.
+The four history endpoints read from Postgres, which a background task keeps filled. They can lag the exchange briefly.
 
-- `limit` default 100, maksimum 1000.
-- `before` untuk halaman berikutnya: isi dengan `id` (trade, fill) atau `order_id` (order) terkecil dari halaman sebelumnya.
-- `status` order: `open`, `filled`, `cancelled`, `rejected`.
-- `interval` candle: `1m` (default), `5m`, `15m`, `1h`, `4h`, `1d`. `start` candle dalam milidetik epoch.
-- Tabel dibuat otomatis saat server start.
+- `limit` defaults to 100, at most 1000.
+- `before` pages backwards: pass the smallest `id` (trades, fills) or `order_id` (orders) from the previous page.
+- Order `status`: `open`, `filled`, `cancelled`, `rejected`.
+- Candle `interval`: `1m` (default), `5m`, `15m`, `1h`, `4h`, `1d`. A candle's `start` is in epoch milliseconds.
+- Tables are created automatically when the server starts.
 
 ## WebSocket
 
-Sambung ke `/ws`, lalu kirim:
+Connect to `/ws` and send:
 
 ```json
 {"op": "subscribe", "channel": "book", "market": 1}
 {"op": "subscribe", "channel": "trades", "market": 1}
 {"op": "unsubscribe", "channel": "book", "market": 1}
-{"op": "auth", "key": "kunci-alice"}
+{"op": "auth", "key": "alice-key"}
 ```
 
-Pesan dari server:
+Messages from the server:
 
-- `{"channel": "book", "market", "seq", "bids", "asks"}`: seluruh buku, dikirim saat subscribe dan setiap kali buku berubah. Abaikan pesan dengan `seq` lebih kecil dari yang terakhir diterima.
+- `{"channel": "book", "market", "seq", "bids", "asks"}`: the whole book, sent on subscribe and whenever it changes. Ignore messages with a lower `seq` than the last one you received.
 - `{"channel": "trades", "market", "seq", "data": <trade>}`.
-- `{"channel": "user", "seq", "data": <event>}`: event order milik akun, aktif setelah `auth`.
-- `{"error": "lagged"}`: klien terlalu lambat; koneksi ditutup dan klien harus menyambung ulang.
+- `{"channel": "user", "seq", "data": <event>}`: events for the account's own orders, after `auth`.
+- `{"error": "lagged"}`: the client fell too far behind; the connection is closed and the client must reconnect.
 
-## Operasional
+## Operations
 
-- **Log** ditulis ke stdout lewat `tracing`: recovery saat start, alamat listen, kegagalan journal, dan kegagalan proyeksi history.
-- **Metrics** di `/metrics`, semua berawalan `windrunner_`: `inputs_total`, `trades_total`, `batches_total` (satu fsync per batch), `commit_seconds_total`, `queue_rejections_total`, `sequence`, `history_sequence`, `ws_connections`. Selisih `sequence` dan `history_sequence` adalah ketertinggalan database history.
-- **Shutdown**: SIGINT atau SIGTERM menghentikan penerimaan request baru. Koneksi yang masih terbuka diberi waktu 5 detik.
+- **Logs** go to stdout through `tracing`: recovery at startup, the listen address, journal failures and history projection failures.
+- **Metrics** at `/metrics`, all prefixed `windrunner_`: `inputs_total`, `trades_total`, `batches_total` (one fsync per batch), `commit_seconds_total`, `queue_rejections_total`, `sequence`, `history_sequence`, `ws_connections`. The gap between `sequence` and `history_sequence` is how far the history database lags.
+- **Shutdown**: SIGINT or SIGTERM stops accepting new requests. Open connections get 5 seconds to finish.
 
-## Benchmark
+## Benchmarks
 
 ```sh
 cargo bench -p windrunner-engine --bench matching
@@ -142,32 +142,32 @@ cargo bench -p windrunner-exchange --bench exchange
 cargo run --release -p windrunner-server --example load -- 256 2000
 ```
 
-Contoh `load` menjalankan banyak klien serentak langsung ke thread exchange (tanpa HTTP); tiap order menunggu fsync seperti di server.
+The `load` example runs many concurrent clients straight against the exchange thread (no HTTP); each order waits for its fsync, as it does in the server.
 
-Hasil di satu laptop Apple Silicon, sekadar gambaran:
+Results on one Apple Silicon laptop, as a rough guide:
 
-| Yang diukur | Hasil |
-|-------------|-------|
-| Engine saja, campuran place/cancel | sekitar 12 juta operasi/detik |
-| Engine + ledger | sekitar 2,3 juta input/detik |
-| Dengan journal, fsync tiap 1024 input | sekitar 160 ribu input/detik |
-| `load`, 256 klien | sekitar 21 ribu order/detik, p50 11 ms, p99 21 ms |
-| `load`, 8 klien | sekitar 1 ribu order/detik, p50 8 ms |
+| Measured | Result |
+|----------|--------|
+| Engine alone, mixed place/cancel | about 12 million ops/s |
+| Engine + ledger | about 2.3 million inputs/s |
+| With the journal, fsync every 1024 inputs | about 160 thousand inputs/s |
+| `load`, 256 clients | about 21 thousand orders/s, p50 11 ms, p99 21 ms |
+| `load`, 8 clients | about 1 thousand orders/s, p50 8 ms |
 
-Batasnya adalah fsync (sekitar 8 ms per commit di mesin itu), bukan matching. Throughput naik seiring jumlah klien serentak karena satu fsync menanggung lebih banyak order.
+The limit is fsync (about 8 ms per commit on that machine), not matching. Throughput grows with the number of concurrent clients because one fsync covers more orders.
 
-## Test
+## Tests
 
 ```sh
 cargo test
 ```
 
-Test yang butuh Postgres hanya berjalan kalau `WINDRUNNER_TEST_DATABASE_URL` diisi; tanpa itu test tersebut lulus tanpa melakukan apa-apa. Tiap test membuat schema sendiri di database itu dan tidak menghapusnya, jadi pakai database sekali pakai.
+Tests that need Postgres only run when `WINDRUNNER_TEST_DATABASE_URL` is set; without it they pass without doing anything. Each test creates its own schema in that database and leaves it behind, so point it at a throwaway database.
 
 ```sh
 WINDRUNNER_TEST_DATABASE_URL=postgres://user@localhost/windrunner_test cargo test
 ```
 
-## Lisensi
+## License
 
 [MIT](LICENSE)
